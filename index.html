@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>선부포토 - my-photobooth</title>
+    <!-- QR 코드 라이브러리 및 Tailwind CSS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 웹 폰트 불러오기 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gowun+Batang:wght@700&family=Nanum+Pen+Script&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f1117;
+            --panel-bg: #1a1d26;
+            --card-bg: #262a36;
+            --accent-color: #ff4757;
+            --accent-hover: #ff6b81;
+            --text-color: #ffffff;
+            --text-sub: #9ca3af;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .app-container {
+            display: flex;
+            width: 100vw;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 16px;
+            gap: 20px;
+            flex: 1;
+        }
+
+        .stage-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            width: 100%;
+        }
+
+        .viewfinder-outer {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            height: calc(100vh - 200px);
+            max-height: 620px;
+            background-color: #000000;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            padding: 45px 16px 85px 16px;
+            transition: all 0.3s ease;
+        }
+
+        .viewfinder-outer::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: 100% 100%;
+            background-position: center;
+            background-repeat: no-repeat;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .viewfinder-outer.theme-school::after {
+            background-image: var(--bg-img-url, url('bg-school2.png'));
+        }
+        .viewfinder-outer.theme-color-1 { background: #1a1a1a; }
+        .viewfinder-outer.theme-color-2 { background: #ffffff; color: #1a1a1a; }
+        .viewfinder-outer.theme-color-3 { background: #f4ebe1; color: #333333; }
+        .viewfinder-outer.theme-grad-1 { background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%); }
+        .viewfinder-outer.theme-grad-2 { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
+
+        .frame-header {
+            position: absolute;
+            top: 12px;
+            right: 20px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            z-index: 15;
+            white-space: nowrap;
+            color: #ffffff;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .camera-grid {
+            flex: 1;
+            display: grid;
+            gap: 8px;
+            width: 100%;
+            position: relative;
+            z-index: 5;
+            overflow: hidden;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .camera-grid.cut-1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+        .camera-grid.cut-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+        .camera-grid.cut-3 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr 1fr; }
+        .camera-grid.cut-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+        .cut-box {
+            position: relative;
+            background-color: #111;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .webcam-stream, .captured-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .webcam-stream {
+            transform: scaleX(-1);
+        }
+
+        .sticker-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .sticker-item {
+            position: absolute;
+            font-size: 2rem;
+            transform: translate(-50%, -50%);
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));
+        }
+
+        .countdown-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 5rem;
+            font-weight: 900;
+            color: var(--accent-color);
+            text-shadow: 0 0 20px rgba(0,0,0,0.8);
+            z-index: 30;
+            display: none;
+            text-align: center;
+        }
+
+        .action-bar {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            padding: 14px 36px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(255, 71, 87, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-2px);
+        }
+
+        .sidebar-section {
+            width: 380px;
+            background-color: var(--panel-bg);
+            border-radius: 20px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            overflow-y: auto;
+            max-height: calc(100vh - 120px);
+        }
+
+        .sidebar-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 12px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-label {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-sub);
+        }
+
+        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+
+        .btn-opt {
+            background-color: var(--card-bg);
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 8px 6px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-opt:hover { background-color: #323746; }
+        
+        .btn-opt.active {
+            background-color: var(--accent-color) !important;
+            border-color: var(--accent-color) !important;
+            color: #ffffff !important;
+        }
+
+        .color-btn {
+            height: 32px;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .color-btn:hover { transform: scale(1.05); }
+        .color-btn.active { border-color: #ffffff !important; transform: scale(1.1); }
+
+        .input-text {
+            width: 100%;
+            background-color: var(--card-bg);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 10px 12px;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .modal-mask {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background-color: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(8px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .modal-card {
+            background-color: var(--panel-bg);
+            border-radius: 24px;
+            padding: 24px;
+            width: 100%;
+            max-width: 460px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .qr-wrapper {
+            background: #ffffff;
+            padding: 8px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100px;
+            min-width: 100px;
+        }
+
+        .preview-img-box {
+            width: 100%;
+            max-height: 220px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: #000;
+        }
+
+        .preview-img-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .btn-download {
+            background-color: #2ed573;
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 700;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .btn-video {
+            background-color: #70a1ff;
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 700;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        @media (max-width: 900px) {
+            .app-container {
+                flex-direction: column;
+                height: auto;
+                padding: 12px;
+            }
+            .sidebar-section { width: 100%; max-height: none; }
+            .viewfinder-outer { height: 500px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- 메인 촬영 뷰파인더 -->
+        <div class="stage-section">
+            <div class="viewfinder-outer theme-school" id="frame-outer">
+                <div class="frame-header" id="text-header-display">선부고 최고 ✨</div>
+                <div class="camera-grid cut-3" id="camera-grid"></div>
+                <div class="sticker-layer" id="sticker-layer"></div>
+                <div class="countdown-overlay" id="countdown">3</div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn-primary" id="btn-take-photo">사진 촬영 📸</button>
+            </div>
+        </div>
+
+        <!-- 설정 사이드바 -->
+        <div class="sidebar-section">
+            <div class="sidebar-title">📸 선부포토 설정</div>
+
+            <div class="control-group" id="grp-cut">
+                <div class="control-label">1. 프레임 컷수 선택</div>
+                <div class="grid-4">
+                    <button class="btn-opt" onclick="setCutLayout(1, this)">1컷</button>
+                    <button class="btn-opt" onclick="setCutLayout(2, this)">2컷</button>
+                    <button class="btn-opt active" onclick="setCutLayout(3, this)">3컷</button>
+                    <button class="btn-opt" onclick="setCutLayout(4, this)">4컷</button>
+                </div>
+            </div>
+
+            <div class="control-group" id="grp-preset">
+                <div class="control-label">2. 상단 문구 선택 & 직접 입력</div>
+                <div class="grid-2">
+                    <button class="btn-opt active" onclick="selectPresetText('선부고 최고 ✨', this)">선부고 최고 ✨</button>
+                    <button class="btn-opt" onclick="selectPresetText('우리들의 순간 💖', this)">우리들의 순간 💖</button>
+                    <button class="btn-opt" onclick="selectPresetText('선부고의 하루 🏫', this)">선부고의 하루 🏫</button>
+                    <button class="btn-opt" onclick="selectPresetText('우정 영원히 🍀', this)">우정 영원히 🍀</button>
+                    <button class="btn-opt" onclick="selectPresetText('Happy Everyday 🎈', this)">Happy Everyday 🎈</button>
+                    <button class="btn-opt" onclick="selectPresetText('빛나는 청춘 🌟', this)">빛나는 청춘 🌟</button>
+                    <button class="btn-opt" onclick="selectPresetText('기억해 이 순간 📸', this)">기억해 이 순간 📸</button>
+                    <button class="btn-opt" onclick="selectPresetText('함께라서 좋아 💛', this)">함께라서 좋아 💛</button>
+                    <button class="btn-opt" onclick="selectPresetText('오늘도 화이팅 🔥', this)">오늘도 화이팅 🔥</button>
+                    <button class="btn-opt" onclick="selectPresetText('Best Friends 💖', this)">Best Friends 💖</button>
+                </div>
+                <input type="text" class="input-text" id="input-header-text" value="선부고 최고 ✨" placeholder="원하는 문구를 직접 입력해보세요" oninput="updateHeaderText()">
+            </div>
+
+            <div class="control-group" id="grp-font">
+                <div class="control-label">3. 글씨 폰트 선택</div>
+                <div class="grid-4">
+                    <button class="btn-opt active" style="font-family: 'Pretendard';" onclick="setFont('Pretendard', this)">기본 고딕</button>
+                    <button class="btn-opt" style="font-family: 'Gaegu';" onclick="setFont('Gaegu', this)">둥근 귀여움</button>
+                    <button class="btn-opt" style="font-family: 'Nanum Pen Script';" onclick="setFont('Nanum Pen Script', this)">감성 손글씨</button>
+                    <button class="btn-opt" style="font-family: 'Gowun Batang';" onclick="setFont('Gowun Batang', this)">클래식 명조</button>
+                </div>
+            </div>
+
+            <div class="control-group" id="grp-color">
+                <div class="control-label">4. 글씨 색상 선택</div>
+                <div class="grid-5">
+                    <button class="color-btn active" style="background-color: #ffffff;" onclick="setTextColor('#ffffff', this)"></button>
+                    <button class="color-btn" style="background-color: #ff4757;" onclick="setTextColor('#ff4757', this)"></button>
+                    <button class="color-btn" style="background-color: #ffa502;" onclick="setTextColor('#ffa502', this)"></button>
+                    <button class="color-btn" style="background-color: #2ed573;" onclick="setTextColor('#2ed573', this)"></button>
+                    <button class="color-btn" style="background-color: #1e90ff;" onclick="setTextColor('#1e90ff', this)"></button>
+                </div>
+            </div>
+
+            <div class="control-group" id="grp-theme">
+                <div class="control-label">5. 배경 테마 선택</div>
+                <div class="grid-3">
+                    <button class="btn-opt active" onclick="setTheme('theme-school', this)">🏫 선부고</button>
+                    <button class="btn-opt" onclick="setTheme('theme-color-1', this)">🖤 블랙</button>
+                    <button class="btn-opt" onclick="setTheme('theme-color-2', this)">🤍 화이트</button>
+                    <button class="btn-opt" onclick="setTheme('theme-color-3', this)">🥐 베이지</button>
+                    <button class="btn-opt" onclick="setTheme('theme-grad-1', this)">☁️ 파스텔</button>
+                    <button class="btn-opt" onclick="setTheme('theme-grad-2', this)">🌸 피치</button>
+                </div>
+            </div>
+
+            <div class="control-group" id="grp-sticker">
+                <div class="control-label">6. 스티커 추가</div>
+                <div class="grid-3">
+                    <button class="btn-opt" onclick="addSticker('❤️')">❤️ 하트</button>
+                    <button class="btn-opt" onclick="addSticker('🎓')">🎓 학사모</button>
+                    <button class="btn-opt" onclick="addSticker('✨')">✨ 반짝이</button>
+                    <button class="btn-opt" onclick="addSticker('🏫')">🏫 학교</button>
+                    <button class="btn-opt" onclick="addSticker('🎀')">🎀 리본</button>
+                    <button class="btn-opt" onclick="addSticker('🍀')">🍀 행운</button>
+                </div>
+                <button class="btn-opt" style="margin-top: 4px; color: var(--accent-color);" onclick="clearStickers()">🔄 스티커 초기화</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 하단 푸터 패널 -->
+    <footer class="no-print bg-slate-900 text-slate-400 py-4 border-t border-slate-800 text-center text-xs w-full mt-auto">
+        <div class="max-w-7xl mx-auto px-4 space-y-2">
+            <div class="bg-slate-800/90 p-3 rounded-lg border border-slate-700/60 max-w-xl mx-auto">
+                <p class="font-bold text-yellow-400 text-sm mb-1">💬 선부고등학교 카카오톡 채널 안내</p>
+                <p class="text-slate-300 text-xs mb-2">학교폭력 신고 및 고민 상담이 필요할 땐 카카오톡 채널을 이용해주세요.</p>
+                <a href="http://pf.kakao.com/_JxnEqn/chat" target="_blank" class="inline-flex items-center gap-1.5 bg-yellow-400 text-slate-900 font-bold px-3 py-1.5 rounded-full hover:bg-yellow-300 transition-colors text-xs">
+                    <span>💛 선부고 카카오채널 바로가기</span>
+                </a>
+            </div>
+
+            <div>
+                Developed by <strong class="text-slate-200">천준혁(선부고)</strong> | 
+                <a href="https://instagram.com/yook.ssam" target="_blank" class="hover:underline text-slate-300">
+                    ✨ @yook.ssam
+                </a>
+            </div>
+            <div class="text-[11px] opacity-80">
+                &copy; 2026. All Rights Reserved.
+            </div>
+            <p class="mt-1 text-slate-500 text-[11px]">본 시스템은 선부고등학교 학생 소통 및 포토부스 서비스를 위해 제작되었습니다.</p>
+        </div>
+    </footer>
+
+    <!-- 최종 촬영 결과 모달 -->
+    <div class="modal-mask" id="result-modal">
+        <div class="modal-card">
+            <h3 style="font-weight: 800; font-size: 1.2rem;">촬영이 완료되었습니다! 🎉</h3>
+            
+            <div class="preview-img-box">
+                <img id="final-result-img" alt="최종 사진 미리보기">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;">
+                <button class="btn-download" onclick="downloadPhoto()">💾 태블릿 저장</button>
+                <button class="btn-video" onclick="downloadVideo()">🎬 모션 영상</button>
+            </div>
+
+            <!-- 스마트폰 QR 전송 및 카카오톡 전송 영역 -->
+            <div style="background: rgba(255,255,255,0.06); padding: 14px; border-radius: 16px; width: 100%; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                <p style="font-size: 0.85rem; color: #38bdf8; font-weight: bold;">📱 스마트폰으로 사진 받기</p>
+                <p style="font-size: 0.72rem; color: #9ca3af;" id="qr-status-text">구글 드라이브 업로드 및 QR 생성 중...</p>
+                
+                <div class="qr-wrapper" id="qrcode-box"></div>
+
+                <div style="display: flex; gap: 6px; width: 100%; margin-top: 4px;">
+                    <button class="btn-opt" style="flex: 1; font-size: 0.75rem;" onclick="copyUploadedUrl()">🔗 링크 복사</button>
+                    <a href="http://pf.kakao.com/_JxnEqn/chat" target="_blank" class="btn-opt" style="flex: 1; font-size: 0.75rem; background-color: #fee500; color: #000; font-weight: bold; display: flex; align-items: center; justify-content: center; text-decoration: none;">💛 카카오톡 전송</a>
+                </div>
+            </div>
+
+            <button class="btn-primary" style="width: 100%; padding: 12px;" onclick="closeModal()">다시 찍기 🔄</button>
+        </div>
+    </div>
+
+    <canvas id="render-canvas" style="display:none;"></canvas>
+
+    <script>
+        // 🔽 [수정필요] 학교 구글 계정에서 생성한 구글 앱스 스크립트 웹앱 URL을 붙여넣으세요!
+        const GOOGLE_SCRIPT_URL = "여기에_학교_구글_앱스_스크립트_URL을_붙여넣으세요"; 
+        const KAKAO_CHANNEL_CHAT_URL = "http://pf.kakao.com/_JxnEqn/chat";
+
+        let videoStream = null;
+        let currentCutCount = 3;
+        let activeThemeClass = 'theme-school';
+        let currentFont = 'Pretendard';
+        let currentTextColor = '#ffffff';
+        
+        let capturedImages = [];
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let recordedVideoBlob = null;
+        let currentUploadedUrl = "";
+
+        const timestamp = new Date().getTime();
+        const bgImgPath = `bg-school2.png?v=${timestamp}`;
+
+        document.documentElement.style.setProperty('--bg-img-url', `url('${bgImgPath}')`);
+
+        const bgCustomImg = new Image();
+        bgCustomImg.src = bgImgPath;
+
+        const cameraGrid = document.getElementById('camera-grid');
+        const frameOuter = document.getElementById('frame-outer');
+        const stickerLayer = document.getElementById('sticker-layer');
+        const textHeaderDisplay = document.getElementById('text-header-display');
+        const inputHeaderText = document.getElementById('input-header-text');
+        const countdownEl = document.getElementById('countdown');
+        const btnTakePhoto = document.getElementById('btn-take-photo');
+
+        async function startCamera() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 1280 }, height: { ideal: 960 }, facingMode: 'user' },
+                    audio: false
+                });
+                renderCutBoxes();
+            } catch (err) {
+                alert('카메라 사용 권한이 필요합니다.');
+            }
+        }
+
+        function renderCutBoxes() {
+            cameraGrid.innerHTML = '';
+            cameraGrid.className = `camera-grid cut-${currentCutCount}`;
+            capturedImages = [];
+
+            for (let i = 0; i < currentCutCount; i++) {
+                const box = document.createElement('div');
+                box.className = 'cut-box';
+                box.id = `cut-box-${i}`;
+
+                if (i === 0) {
+                    const video = document.createElement('video');
+                    video.className = 'webcam-stream';
+                    video.autoplay = true;
+                    video.playsInline = true;
+                    video.muted = true;
+                    video.srcObject = videoStream;
+                    box.appendChild(video);
+                } else {
+                    box.innerHTML = `<span style="font-size:0.8rem; color:#6b7280;">${i + 1}번째 컷 대기중</span>`;
+                }
+
+                cameraGrid.appendChild(box);
+            }
+        }
+
+        function setActiveButton(groupId, targetBtn) {
+            const group = document.getElementById(groupId);
+            if (!group) return;
+            group.querySelectorAll('.btn-opt, .color-btn').forEach(btn => btn.classList.remove('active'));
+            if (targetBtn) targetBtn.classList.add('active');
+        }
+
+        function setCutLayout(cutNum, btn) {
+            currentCutCount = cutNum;
+            setActiveButton('grp-cut', btn);
+            renderCutBoxes();
+        }
+
+        function selectPresetText(text, btn) {
+            inputHeaderText.value = text;
+            textHeaderDisplay.innerText = text;
+            setActiveButton('grp-preset', btn);
+        }
+
+        function updateHeaderText() {
+            textHeaderDisplay.innerText = inputHeaderText.value;
+            const group = document.getElementById('grp-preset');
+            group.querySelectorAll('.btn-opt').forEach(btn => btn.classList.remove('active'));
+        }
+
+        function setFont(fontName, btn) {
+            currentFont = fontName;
+            textHeaderDisplay.style.fontFamily = `'${fontName}', sans-serif`;
+            setActiveButton('grp-font', btn);
+        }
+
+        function setTextColor(color, btn) {
+            currentTextColor = color;
+            textHeaderDisplay.style.color = color;
+            setActiveButton('grp-color', btn);
+        }
+
+        function setTheme(themeClass, btn) {
+            frameOuter.classList.remove(activeThemeClass);
+            activeThemeClass = themeClass;
+            frameOuter.classList.add(activeThemeClass);
+            setActiveButton('grp-theme', btn);
+        }
+
+        function addSticker(emoji) {
+            const sticker = document.createElement('div');
+            sticker.className = 'sticker-item';
+            sticker.innerText = emoji;
+
+            const positions = [
+                { top: '15%', left: '10%' },
+                { top: '15%', left: '50%' },
+                { top: '88%', left: '15%' },
+                { top: '88%', left: '85%' }
+            ];
+
+            const count = stickerLayer.children.length;
+            const pos = positions[count % positions.length];
+
+            sticker.style.top = pos.top;
+            sticker.style.left = pos.left;
+
+            stickerLayer.appendChild(sticker);
+        }
+
+        function clearStickers() {
+            stickerLayer.innerHTML = '';
+        }
+
+        btnTakePhoto.addEventListener('click', async () => {
+            btnTakePhoto.disabled = true;
+            btnTakePhoto.style.opacity = '0.5';
+            
+            capturedImages = [];
+            recordedChunks = [];
+            
+            try {
+                mediaRecorder = new MediaRecorder(videoStream, { mimeType: 'video/webm' });
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) recordedChunks.push(e.data);
+                };
+                mediaRecorder.start();
+            } catch (e) {
+                console.log("MediaRecorder 비지원");
+            }
+
+            for (let i = 0; i < currentCutCount; i++) {
+                moveWebcamToBox(i);
+                await startCountdownForCut(i + 1, currentCutCount);
+                captureCurrentCut(i);
+            }
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                mediaRecorder.onstop = () => {
+                    recordedVideoBlob = new Blob(recordedChunks, { type: 'video/webm' });
+                };
+            }
+
+            generateFinalFrame();
+
+            btnTakePhoto.disabled = false;
+            btnTakePhoto.style.opacity = '1';
+        });
+
+        function moveWebcamToBox(index) {
+            for (let i = 0; i < currentCutCount; i++) {
+                const box = document.getElementById(`cut-box-${i}`);
+                if (i === index) {
+                    box.innerHTML = '';
+                    const video = document.createElement('video');
+                    video.className = 'webcam-stream';
+                    video.autoplay = true;
+                    video.playsInline = true;
+                    video.muted = true;
+                    video.srcObject = videoStream;
+                    box.appendChild(video);
+                }
+            }
+        }
+
+        function startCountdownForCut(currentStep, totalSteps) {
+            return new Promise((resolve) => {
+                let count = 3;
+                countdownEl.style.display = 'block';
+                countdownEl.innerHTML = `<span style="font-size:1.8rem; display:block; color:#fff;">${currentStep} / ${totalSteps} 컷</span>${count}`;
+
+                const timer = setInterval(() => {
+                    count--;
+                    if (count > 0) {
+                        countdownEl.innerHTML = `<span style="font-size:1.8rem; display:block; color:#fff;">${currentStep} / ${totalSteps} 컷</span>${count}`;
+                    } else {
+                        clearInterval(timer);
+                        countdownEl.style.display = 'none';
+                        resolve();
+                    }
+                }, 1000);
+            });
+        }
+
+        function captureCurrentCut(index) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 640;
+            tempCanvas.height = 480;
+            const ctx = tempCanvas.getContext('2d');
+
+            const video = document.querySelector('.webcam-stream');
+            ctx.translate(tempCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            const imgData = tempCanvas.toDataURL('image/png');
+            capturedImages.push(imgData);
+
+            const box = document.getElementById(`cut-box-${index}`);
+            box.innerHTML = `<img src="${imgData}" class="captured-img">`;
+        }
+
+        function generateFinalFrame() {
+            const canvas = document.getElementById('render-canvas');
+            const ctx = canvas.getContext('2d');
+
+            const width = 800;
+            const photoHeight = 1100;
+            const footerHeight = 100;
+            const totalHeight = photoHeight + footerHeight;
+
+            canvas.width = width;
+            canvas.height = totalHeight;
+
+            if (activeThemeClass === 'theme-color-1') {
+                ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, width, photoHeight);
+            } else if (activeThemeClass === 'theme-color-2') {
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, photoHeight);
+            } else if (activeThemeClass === 'theme-color-3') {
+                ctx.fillStyle = '#f4ebe1'; ctx.fillRect(0, 0, width, photoHeight);
+            } else if (activeThemeClass.startsWith('theme-grad')) {
+                let grad = ctx.createLinearGradient(0, 0, width, photoHeight);
+                grad.addColorStop(0, '#a1c4fd'); grad.addColorStop(1, '#c2e9fb');
+                ctx.fillStyle = grad; ctx.fillRect(0, 0, width, photoHeight);
+            } else {
+                ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, width, photoHeight);
+            }
+
+            if (activeThemeClass === 'theme-school') {
+                ctx.drawImage(bgCustomImg, 0, 0, width, photoHeight);
+            }
+
+            const padding = 25;
+            const topMargin = 85;
+            const bottomMargin = 120;
+            const gridWidth = width - (padding * 2);
+            const gridHeight = photoHeight - topMargin - bottomMargin;
+
+            let loadedCount = 0;
+            capturedImages.forEach((imgSrc, idx) => {
+                const img = new Image();
+                img.onload = () => {
+                    if (currentCutCount === 1) {
+                        drawImageToCanvas(ctx, img, padding, topMargin, gridWidth, gridHeight);
+                    } else if (currentCutCount === 2) {
+                        const h = (gridHeight - padding) / 2;
+                        if (idx === 0) drawImageToCanvas(ctx, img, padding, topMargin, gridWidth, h);
+                        if (idx === 1) drawImageToCanvas(ctx, img, padding, topMargin + h + padding, gridWidth, h);
+                    } else if (currentCutCount === 3) {
+                        const h = (gridHeight - (padding * 2)) / 3;
+                        drawImageToCanvas(ctx, img, padding, topMargin + (idx * (h + padding)), gridWidth, h);
+                    } else if (currentCutCount === 4) {
+                        const w = (gridWidth - padding) / 2;
+                        const h = (gridHeight - padding) / 2;
+                        if (idx === 0) drawImageToCanvas(ctx, img, padding, topMargin, w, h);
+                        if (idx === 1) drawImageToCanvas(ctx, img, padding + w + padding, topMargin, w, h);
+                        if (idx === 2) drawImageToCanvas(ctx, img, padding, topMargin + h + padding, w, h);
+                        if (idx === 3) drawImageToCanvas(ctx, img, padding + w + padding, topMargin + h + padding, w, h);
+                    }
+
+                    loadedCount++;
+                    if (loadedCount === capturedImages.length) {
+                        drawOverlaysAndFooter(ctx, width, photoHeight, footerHeight);
+                    }
+                };
+                img.src = imgSrc;
+            });
+        }
+
+        function drawImageToCanvas(ctx, img, x, y, w, h) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 12);
+            ctx.clip();
+            ctx.drawImage(img, x, y, w, h);
+            ctx.restore();
+        }
+
+        function drawOverlaysAndFooter(ctx, width, photoHeight, footerHeight) {
+            const canvas = document.getElementById('render-canvas');
+
+            ctx.fillStyle = currentTextColor;
+            ctx.font = `bold 32px '${currentFont}', sans-serif`;
+            ctx.textAlign = 'right';
+            ctx.fillText(textHeaderDisplay.innerText, width - 40, 50);
+
+            const stickers = document.querySelectorAll('.sticker-item');
+            const outerRect = frameOuter.getBoundingClientRect();
+            stickers.forEach(s => {
+                const rect = s.getBoundingClientRect();
+                const rx = (rect.left - outerRect.left) / outerRect.width;
+                const ry = (rect.top - outerRect.top) / outerRect.height;
+                ctx.font = '48px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(s.innerText, rx * width, ry * photoHeight);
+            });
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, photoHeight, width, footerHeight);
+
+            ctx.fillStyle = '#111827';
+            ctx.font = 'bold 20px Pretendard, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('💬 선부고 카카오톡 채널 : 학교폭력 신고 및 고민 상담 가능', width / 2, photoHeight + 42);
+
+            ctx.fillStyle = '#6b7280';
+            ctx.font = '14px Pretendard, sans-serif';
+            ctx.fillText('Developed by 천준혁(선부고) ✨ @yook.ssam | © 2026 All Rights Reserved.', width / 2, photoHeight + 72);
+
+            const dataUrl = canvas.toDataURL('image/png');
+            document.getElementById('final-result-img').src = dataUrl;
+
+            document.getElementById('result-modal').style.display = 'flex';
+
+            uploadToDriveAndGenerateQR(dataUrl);
+        }
+
+        async function uploadToDriveAndGenerateQR(base64Image) {
+            const statusText = document.getElementById('qr-status-text');
+            const qrBox = document.getElementById('qrcode-box');
+            
+            statusText.innerText = "구글 드라이브 업로드 및 QR 생성 중...";
+            qrBox.innerHTML = '';
+
+            if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("여기에_")) {
+                statusText.innerText = "앱스 스크립트 URL 미설정 상태입니다.";
+                return;
+            }
+
+            try {
+                const base64Data = base64Image.replace(/^data:image\/(png|jpg);base64,/, "");
+
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        filename: `선부포토_${Date.now()}.png`,
+                        image: base64Data
+                    })
+                });
+
+                const resData = await response.json();
+
+                if (resData.result === "success") {
+                    currentUploadedUrl = resData.url;
+                    statusText.innerText = "스마트폰 카메라인식 후 사진을 저장하세요!";
+
+                    new QRCode(qrBox, {
+                        text: currentUploadedUrl,
+                        width: 100,
+                        height: 100
+                    });
+                } else {
+                    statusText.innerText = "구글 드라이브 업로드 실패: " + resData.error;
+                }
+            } catch (err) {
+                console.error(err);
+                statusText.innerText = "QR 생성 실패 (네트워크 연결 확인)";
+            }
+        }
+
+        function copyUploadedUrl() {
+            if (!currentUploadedUrl) {
+                alert("아직 사진 웹 링크가 생성되지 않았습니다.");
+                return;
+            }
+            navigator.clipboard.writeText(currentUploadedUrl);
+            alert("사진 저장 링크가 복사되었습니다! 카카오톡 채팅창에 붙여넣어 전송해 보세요.");
+        }
+
+        function downloadPhoto() {
+            const canvas = document.getElementById('render-canvas');
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = `선부포토_${Date.now()}.png`;
+            a.click();
+        }
+
+        function downloadVideo() {
+            if (!recordedVideoBlob) {
+                alert('저장할 모션 영상이 없습니다.');
+                return;
+            }
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(recordedVideoBlob);
+            a.download = `선부포토_모션영상_${Date.now()}.webm`;
+            a.click();
+        }
+
+        function closeModal() {
+            document.getElementById('result-modal').style.display = 'none';
+            renderCutBoxes();
+        }
+
+        startCamera();
+    </script>
+</body>
+</html>
